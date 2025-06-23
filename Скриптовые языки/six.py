@@ -1,114 +1,96 @@
-# import requests
-# from bs4 import BeautifulSoup
-# from urllib.parse import urljoin, urlparse
-# from collections import deque
-# import time
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin, urlparse
+from collections import deque
+import time
 
-# class WikiPathFinder:
-#     def __init__(self, requests_per_minute):
-#         self.requests_per_minute = requests_per_minute
-#         self.min_delay = 60.0 / requests_per_minute
-#         self.last_request_time = 0
-#         self.session = requests.Session()
-#         self.cache = {}
+def extract_links(url, lang_prefix):
+    try:
+        resp = requests.get(url, timeout=10)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        links = set()
+        content = soup.find("div", class_="mw-parser-output")
 
-#     def throttle(self):
-#         elapsed = time.time() - self.last_request_time
-#         if elapsed < self.min_delay:
-#             wait = self.min_delay - elapsed
-#             time.sleep(wait)
-#         self.last_request_time = time.time()
+        for tag in content.find_all("a", href=True):
+            href = tag['href']
+            if href.startswith('/wiki/') and not any(x in href for x in [':', '#']):
+                full_url = urljoin("https://" + lang_prefix + ".wikipedia.org", href)
+                links.add(full_url)
 
-#     def normalize_url(self, url):
-#         try:
-#             self.throttle()
-#             res = self.session.get(url, allow_redirects=True, timeout=10)
-#             return res.url
-#         except Exception as e:
-#             print(f"[error] Ошибка при normalize_url: {url} — {e}")
-#             return url
+        return list(links)
+    except Exception:
+        return []
 
-#     def get_links(self, url):
-#         if url in self.cache:
-#             return self.cache[url]
+def limited_get(url, lang_prefix, state):
+    while state['requests'] >= state['limit']:
+        if time.time() - state['start'] >= 60:
+            state['requests'] = 0
+            state['start'] = time.time()
+        else:
+            time.sleep(1)
+    state['requests'] += 1
+    return extract_links(url, lang_prefix)
 
-#         try:
-#             self.throttle()
-#             res = self.session.get(url, timeout=10)
-#         except Exception as e:
-#             print(f"[error] Ошибка при get_links: {url} — {e}")
-#             return []
+def bfs(url1, url2, limit):
+    lang = urlparse(url1).netloc.split('.')[0]
+    state = {'requests': 0, 'limit': limit, 'start': time.time()}
 
-#         soup = BeautifulSoup(res.text, 'html.parser')
-#         base = "{uri.scheme}://{uri.netloc}".format(uri=urlparse(url))
-#         content = soup.find('div', {'class': 'mw-parser-output'})
-#         references = soup.find('ol', {'class': 'references'})
-#         links = set()
+    if url1 == url2:
+        return [url1]
 
-#         def extract_links(block):
-#             if not block:
-#                 return
-#             for tag in block.find_all('a', href=True):
-#                 href = tag['href']
-#                 if href.startswith('/wiki/') and ':' not in href and '#' not in href:
-#                     full_url = urljoin(base, href)
-#                     links.add(full_url)
+    queue_f, queue_b = deque([url1]), deque([url2])
+    visited_f, visited_b = {url1: None}, {url2: None}
 
-#         extract_links(content)
-#         extract_links(references)
+    for depth in range(5):
+        for _ in range(len(queue_f)):
+            node = queue_f.popleft()
+            for link in limited_get(node, lang, state):
+                if link not in visited_f:
+                    visited_f[link] = node
+                    queue_f.append(link)
+                    if link in visited_b:
+                        return reconstruct(visited_f, visited_b, link)
 
-#         print(f"[get_links] {url} — {len(links)} ссылок найдено")
-#         self.cache[url] = list(links)
-#         return self.cache[url]
+        for _ in range(len(queue_b)):
+            node = queue_b.popleft()
+            for link in limited_get(node, lang, state):
+                if link not in visited_b:
+                    visited_b[link] = node
+                    queue_b.append(link)
+                    if link in visited_f:
+                        return reconstruct(visited_f, visited_b, link)
 
-#     def bfs(self, start_url, target_url):
-#         start_url = self.normalize_url(start_url)
-#         target_url = self.normalize_url(target_url)
-#         visited = set()
-#         queue = deque()
-#         queue.append((start_url, [start_url]))
-#         visited.add(start_url)
+    return None
 
-#         while queue:
-#             current, path = queue.popleft()
-#             if len(path) > 6:
-#                 continue
+def reconstruct(fwd, bwd, meet):
+    path_fwd, path_bwd = [], []
+    node = meet
+    while node:
+        path_fwd.append(node)
+        node = fwd[node]
+    path_fwd.reverse()
 
-#             links = self.get_links(current)
-#             for link in links:
-#                 norm_link = self.normalize_url(link)
-#                 if norm_link == target_url:
-#                     return path + [norm_link]
-#                 if norm_link not in visited:
-#                     visited.add(norm_link)
-#                     queue.append((norm_link, path + [norm_link]))
-#         return None
+    node = bwd[meet]
+    while node:
+        path_bwd.append(node)
+        node = bwd[node]
 
-#     def find_paths(self, url1, url2):
-#         path1 = self.bfs(url1, url2)
-#         if path1:
-#             print("\nПуть:")
-#             for step in path1:
-#                 print(" →", step)
-#         else:
-#             print("Путь не найден")
-
-#         path2 = self.bfs(url2, url1)
-#         if path2:
-#             print("\n[результат] Обратный путь:")
-#             for step in path2:
-#                 print(" →", step)
-#         else:
-#             print("[результат] Обратный путь не найден")
+    return path_fwd + path_bwd
 
 
-# if __name__ == "__main__":
-#     finder = WikiPathFinder(requests_per_minute=10)
+url1 = "https://en.wikipedia.org/wiki/Ghalib_Academy,_New_Delhi"
+url2 = "https://en.wikipedia.org/wiki/Walter_Melrose"
+limit = 10
 
-#     finder.find_paths(
-#         "https://en.wikipedia.org/wiki/Six_degrees_of_separation",
-#         "https://en.wikipedia.org/wiki/American_Broadcasting_Company"
-#     )
+path1 = bfs(url1, url2, limit)
+path2 = bfs(url2, url1, limit)
 
-print('Путь:\nhttps://en.wikipedia.org/wiki/Six_degrees_of_separation\nhttps://en.wikipedia.org/wiki/Six_Degrees_(TV_series)\nhttps://en.wikipedia.org/wiki/American_Broadcasting_Company')
-print('\nОбратный путь:\nhttps://en.wikipedia.org/wiki/American_Broadcasting_Company\nhttps://en.wikipedia.org/wiki/Telemundo\nhttps://en.wikipedia.org/wiki/Social_media\nhttps://en.wikipedia.org/wiki/Six_degrees_of_separation')
+def format_path(path, start, end):
+    if not path:
+        return f"No path found between {start} and {end} within 5 hops"
+    return " => ".join(path)
+
+print("url1 => url2:")
+print(format_path(path1, url1, url2))
+print("\nurl2 => url1:")
+print(format_path(path2, url2, url1))
