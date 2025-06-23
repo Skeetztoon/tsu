@@ -26,3 +26,4 @@ python six.py
 ### Обновленная версия скрипта, использующая двустронний поиск, за основу взята идея из статьи [Fast Wikipedia traversal algorithm and its applications in NLP and keyphrase extraction](https://medium.com/udemy-engineering/fast-wikipedia-traversal-algorithm-and-its-applications-in-nlp-and-keyphrase-extraction-9d6ff4c4a68b)
 
 <img width="1177" alt="Снимок экрана 2025-06-23 в 19 00 10" src="https://github.com/user-attachments/assets/8bb65107-f0d6-4759-83f7-df31d0570708" />
+<img width="1143" alt="Снимок экрана 2025-06-23 в 19 08 53" src="https://github.com/user-attachments/assets/7b0456bc-0923-4637-a366-16f86a6d2909" />
